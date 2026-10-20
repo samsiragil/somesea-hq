@@ -1,1 +1,2 @@
-* text=auto eol=lf
+# Preserve the source documents and embedded content byte-for-byte.
+* -text
