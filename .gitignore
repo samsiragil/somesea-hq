@@ -1,0 +1,11 @@
+**/node_modules/
+**/.next/
+**/.vercel/
+**/.openai/
+**/test-results/
+**/playwright-report/
+**/*.tsbuildinfo
+**/.env*
+!**/.env.example
+Thumbs.db
+.DS_Store
