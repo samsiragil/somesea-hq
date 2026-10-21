@@ -1,24 +1,5 @@
 'use client';
-import { useEffect, useRef, useState, type FormEvent } from 'react';
-import {
-  SquaresFour,
-  Users,
-  ArrowUpRight,
-  Path,
-  Wallet,
-  Books,
-  GitBranch,
-  Toolbox,
-  ArrowsClockwise,
-  SignOut,
-  Plus,
-  DownloadSimple,
-  UploadSimple,
-  X,
-  Check,
-  ArrowRight,
-  WaveSine,
-} from '@phosphor-icons/react';
+import { useEffect, useRef, useState, type CSSProperties, type FormEvent } from 'react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
@@ -30,10 +11,12 @@ import {
   statuses,
   today,
   totals,
+  type Lead,
   type Mutation,
   type State,
 } from '@/lib/model';
 import type * as serverActions from '@/app/actions';
+import * as Icon from './icons';
 
 type Snapshot = { state: State; revision: number };
 type Document = { path: string; title: string; content: string };
@@ -42,19 +25,23 @@ export type WorkspaceActions = Pick<
   'save' | 'refresh' | 'previewImport' | 'commitImport' | 'downloadExport' | 'signOut'
 >;
 type Props = { initial: Snapshot; documents: Document[]; email: string; actions: WorkspaceActions };
+// Explicit type keeps the server's success/error union intact at the boundary.
 type Preview = Extract<
   Awaited<ReturnType<WorkspaceActions['previewImport']>>,
   { ok: true }
 >['data'];
 const navigation = [
-  { id: 'home', title: 'Overview', icon: SquaresFour },
-  { id: 'crm', title: 'CRM & penjualan', icon: Users },
-  { id: 'road', title: 'Roadmap 90 hari', icon: Path },
-  { id: 'finance', title: 'Keuangan', icon: Wallet },
-  { id: 'docs', title: 'Pustaka HQ', icon: Books },
-  { id: 'decisions', title: 'Decision log', icon: GitBranch },
-  { id: 'tools', title: 'Tools & aset', icon: Toolbox },
+  { id: 'home', title: 'Overview', short: 'Overview', icon: Icon.Overview },
+  { id: 'crm', title: 'CRM & penjualan', short: 'CRM', icon: Icon.People },
+  { id: 'road', title: 'Roadmap 90 hari', short: 'Roadmap', icon: Icon.Route },
+  { id: 'finance', title: 'Keuangan', short: 'Keuangan', icon: Icon.Wallet },
+  { id: 'docs', title: 'Pustaka HQ', short: 'Pustaka', icon: Icon.Books },
+  { id: 'decisions', title: 'Decision log', short: 'Keputusan', icon: Icon.Flag },
+  { id: 'tools', title: 'Tools & aset', short: 'Tools', icon: Icon.Toolbox },
 ];
+const dataPage = { id: 'data', title: 'Data & cadangan', short: 'Data', icon: Icon.Sync };
+const tabs = navigation.slice(0, 4),
+  more = [...navigation.slice(4), dataPage];
 const focus = [
   'Tetapkan kapasitas dan tanggal mulai',
   'Pilih satu penawaran untuk diuji',
@@ -77,7 +64,7 @@ const referenceAssets = [
   ['Generator proposal', 'USULAN', 'Menunggu penawaran yang telah dipakai berulang.'],
 ];
 const titles: Record<string, [string, string]> = {
-  home: ['Selamat datang, Sams.', 'Satu ruang untuk ide, relasi, dan bisnis yang terus tumbuh.'],
+  home: ['Selamat berlayar, Sams.', ''],
   crm: [
     'Relasi sebelum transaksi.',
     'Pahami kebutuhannya. Jaga percakapannya. Tentukan langkah berikutnya.',
@@ -95,16 +82,70 @@ const titles: Record<string, [string, string]> = {
   ],
   data: ['Data tetap milikmu.', 'Cadangkan, pindahkan, dan tinjau sebelum mengimpor.'],
 };
-function Badge({ children }: { children: React.ReactNode }) {
+const pipeline = ['Baru', 'Dihubungi', 'Discovery', 'Qualified', 'Proposal', 'Won'] as const;
+const ranges = roadmap.map(([day]) => day.split('–').map(Number) as [number, number]);
+
+const utc = (d: string) => new Date(d + 'T00:00:00Z');
+const formatDate = (d: string, options: Intl.DateTimeFormatOptions) =>
+  new Intl.DateTimeFormat('id-ID', { ...options, timeZone: 'UTC' }).format(utc(d));
+const daysBetween = (from: string, to: string) =>
+  Math.round((utc(to).getTime() - utc(from).getTime()) / 86_400_000);
+const monthName = (month: string) => formatDate(month + '-01', { month: 'long', year: 'numeric' });
+
+/** Posisi kapal di rute 90 hari berdasarkan tanggal mulai. */
+function voyage(start: string, now: string) {
+  if (!start) return { kind: 'unset', day: 0, index: -1 } as const;
+  const day = daysBetween(start, now) + 1;
+  if (day < 1) return { kind: 'before', day, index: -1 } as const;
+  if (day > 90) return { kind: 'after', day, index: 7 } as const;
+  return {
+    kind: 'active',
+    day,
+    index: ranges.findIndex(([a, b]) => day >= a && day <= b),
+  } as const;
+}
+function followUp(lead: Lead, now: string) {
+  if (!lead.date) return { text: 'Tanpa tanggal', due: false };
+  const short = formatDate(lead.date, { day: 'numeric', month: 'short' });
+  const late = daysBetween(lead.date, now);
+  if (late > 0) return { text: `Lewat ${late} hari · ${short}`, due: true };
+  if (late === 0) return { text: `Hari ini · ${short}`, due: true };
+  return { text: short, due: false };
+}
+
+const flagged = ['FINAL', 'USULAN', 'EKSPERIMEN', 'BELUM TERVERIFIKASI', 'TERSEDIA'];
+/** Status dibedakan oleh bentuk bendera, selalu bersama label teks. */
+function Badge({ children }: { children: string }) {
+  if (flagged.includes(children))
+    return (
+      <span className="flag-label">
+        <span
+          aria-hidden="true"
+          className={
+            'flag ' +
+            (children === 'FINAL' || children === 'TERSEDIA'
+              ? 'final'
+              : children === 'USULAN'
+                ? 'usulan'
+                : children === 'EKSPERIMEN'
+                  ? 'eksperimen'
+                  : 'unknown')
+          }
+        />
+        {children}
+      </span>
+    );
   return (
     <span
       className={
-        'badge ' +
-        (children === 'FINAL' || children === 'TERSEDIA' || children === 'Won'
-          ? 'confirmed'
-          : children === 'BELUM TERVERIFIKASI'
-            ? 'unknown'
-            : '')
+        'chip' +
+        (children === 'Won' || children === 'Omzet'
+          ? ' depth'
+          : children === 'Lost' || children === 'Biaya'
+            ? ' muted'
+            : children === 'Kas masuk'
+              ? ' final'
+              : '')
       }
     >
       {children}
@@ -114,9 +155,32 @@ function Badge({ children }: { children: React.ReactNode }) {
 function Empty({ title, children }: { title: string; children?: React.ReactNode }) {
   return (
     <div className="empty">
-      <WaveSine size={36} weight="light" />
+      <Icon.Harbor />
       <h3>{title}</h3>
       {children}
+    </div>
+  );
+}
+function LogEntry({ status, title, meta }: { status: string; title: string; meta: string }) {
+  return (
+    <div className="log-entry">
+      <span
+        aria-hidden="true"
+        className={
+          'flag ' +
+          (status === 'FINAL'
+            ? 'final'
+            : status === 'USULAN'
+              ? 'usulan'
+              : status === 'EKSPERIMEN'
+                ? 'eksperimen'
+                : 'unknown')
+        }
+      />
+      <div>
+        <p className="log-title">{title}</p>
+        <p className="log-meta">{meta}</p>
+      </div>
     </div>
   );
 }
@@ -156,26 +220,29 @@ export default function Workspace({ initial, documents, email, actions }: Props)
     [preview, setPreview] = useState<Preview | null>(null);
   const [confirmation, setConfirmation] = useState(''),
     [backup, setBackup] = useState(false);
+  const [waypoint, setWaypoint] = useState<number | null>(null),
+    [sheet, setSheet] = useState(false);
   const dialog = useRef<HTMLDialogElement>(null),
     locked = useRef(false);
   const state = snapshot.state;
-  // Explicit type keeps the server's success/error union intact at the boundary.
-  type Preview = Extract<
-    Awaited<ReturnType<WorkspaceActions['previewImport']>>,
-    { ok: true }
-  >['data'];
-  const importPreview = preview as Preview | null;
   useEffect(() => {
     const update = () => {
       const id = location.hash.slice(1);
       setPage([...navigation.map((n) => n.id), 'data'].includes(id) ? id : 'home');
       setSearch('');
       setFilter('');
+      setSheet(false);
     };
     update();
     window.addEventListener('hashchange', update);
     return () => window.removeEventListener('hashchange', update);
   }, []);
+  useEffect(() => {
+    if (!sheet) return;
+    const close = (e: KeyboardEvent) => e.key === 'Escape' && setSheet(false);
+    window.addEventListener('keydown', close);
+    return () => window.removeEventListener('keydown', close);
+  }, [sheet]);
   useEffect(() => {
     if (editor) dialog.current?.showModal();
     else dialog.current?.close();
@@ -224,9 +291,19 @@ export default function Workspace({ initial, documents, email, actions }: Props)
       setNotice('Cadangan JSON berhasil dibuat. Simpan file di lokasi yang aman.');
     });
   }
+  function signOut() {
+    void run(
+      async () => {
+        await actions.signOut();
+        return { ok: true, data: true };
+      },
+      () => {},
+    );
+  }
+  const now = today();
   const report = totals(state, month),
     active = state.leads.filter((l) => !['Won', 'Lost'].includes(l.stage));
-  const due = active.filter((l) => l.date && l.date <= today());
+  const due = active.filter((l) => l.date && l.date <= now);
   const selectedDoc = documents.find((d) => d.path === docPath) ?? documents[0];
   const filteredLeads = state.leads.filter(
     (l) =>
@@ -245,9 +322,72 @@ export default function Workspace({ initial, documents, email, actions }: Props)
     id: string,
     title: string,
   ) => setEditor({ kind: 'delete', collection, id, title });
+  const current = page === 'data' ? dataPage : navigation.find((n) => n.id === page)!;
+
+  // Rute 90 hari: posisi kapal, status tiap titik, dan titik yang sedang dibaca.
+  const trip = voyage(state.start, now);
+  const phaseStatus = (i: number) =>
+    state.road.includes(i) ? 'done' : trip.kind === 'active' && i === trip.index ? 'now' : 'next';
+  const selected = waypoint ?? Math.max(0, trip.index);
+  const ship =
+    trip.kind === 'active'
+      ? Math.min(
+          93.75,
+          ((trip.index +
+            0.5 +
+            (trip.day - ranges[trip.index][0]) /
+              (ranges[trip.index][1] - ranges[trip.index][0] + 1)) /
+            8) *
+            100,
+        )
+      : trip.kind === 'after'
+        ? 93.75
+        : 5;
+  const route = {
+    heading:
+      trip.kind === 'unset'
+        ? 'Tanggal mulai belum ditetapkan'
+        : trip.kind === 'before'
+          ? 'Berangkat ' +
+            formatDate(state.start, { day: 'numeric', month: 'long', year: 'numeric' })
+          : trip.kind === 'after'
+            ? 'Rute 90 hari selesai'
+            : `Fase ${trip.index + 1} dari 8 · ${roadmap[trip.index][1]}`,
+    label:
+      trip.kind === 'active'
+        ? `HARI ${trip.day}`
+        : trip.kind === 'after'
+          ? 'TIBA'
+          : trip.kind === 'before'
+            ? `H-${1 - trip.day}`
+            : 'DI DERMAGA',
+    meta:
+      trip.kind === 'active'
+        ? `hari ${trip.day} dari 90`
+        : trip.kind === 'after'
+          ? 'rute 90 hari selesai'
+          : trip.kind === 'before'
+            ? `berangkat ${1 - trip.day} hari lagi`
+            : 'rute belum dimulai',
+  };
+  const percent = Math.min(100, report.percent);
+  const pipelineRows = [...active]
+    .sort((a, b) => (a.date || '9999').localeCompare(b.date || '9999'))
+    .slice(0, 4);
+  const logRows = state.decisions.length
+    ? [...state.decisions]
+        .reverse()
+        .slice(0, 4)
+        .map((d) => ({ status: d.status, title: d.title, meta: `${d.status} · ${d.source}` }))
+    : foundations.slice(0, 4).map(([title, source]) => ({
+        status: 'FINAL',
+        title,
+        meta: 'FINAL · ' + source.split(' · ')[0],
+      }));
+
   const monthControl = (
     <label className="month-label">
-      Bulan laporan
+      Bulan
       <input
         aria-label="Bulan laporan"
         type="month"
@@ -266,35 +406,36 @@ export default function Workspace({ initial, documents, email, actions }: Props)
             <th>Prospek / kebutuhan</th>
             <th>Tahap</th>
             <th>Tindak lanjut</th>
-            <th>Estimasi</th>
+            <th className="numeric">Estimasi</th>
             <th>Aksi</th>
           </tr>
         </thead>
         <tbody>
-          {rows.map((l) => (
-            <tr key={l.id}>
-              <td>
-                <strong>{l.name}</strong>
-                <small>{l.problem}</small>
-              </td>
-              <td>
-                <Badge>{l.stage}</Badge>
-              </td>
-              <td>
-                {l.next || 'Belum ditentukan'}
-                <small className={due.some((d) => d.id === l.id) ? 'due' : ''}>
-                  {l.date || 'Tanpa tanggal'}
-                </small>
-              </td>
-              <td className="numeric">{money(l.value)}</td>
-              <td>
-                <div className="row-actions">
-                  <button onClick={() => add('lead', l)}>Edit</button>
-                  <button onClick={() => remove('leads', l.id, l.name)}>Hapus</button>
-                </div>
-              </td>
-            </tr>
-          ))}
+          {rows.map((l) => {
+            const next = followUp(l, now);
+            return (
+              <tr key={l.id}>
+                <td>
+                  <strong>{l.name}</strong>
+                  <small>{l.problem}</small>
+                </td>
+                <td>
+                  <Badge>{l.stage}</Badge>
+                </td>
+                <td>
+                  {l.next || 'Belum ditentukan'}
+                  <small className={next.due && active.includes(l) ? 'due' : ''}>{next.text}</small>
+                </td>
+                <td className="numeric">{l.value ? money(l.value) : 'belum ada'}</td>
+                <td>
+                  <div className="row-actions">
+                    <button onClick={() => add('lead', l)}>Edit</button>
+                    <button onClick={() => remove('leads', l.id, l.name)}>Hapus</button>
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -365,103 +506,106 @@ export default function Workspace({ initial, documents, email, actions }: Props)
       </label>
     );
   }
+  const primaryAction = ['home', 'crm', 'finance', 'decisions', 'tools'].includes(page) && (
+    <button
+      className="primary"
+      onClick={() =>
+        add(
+          page === 'finance'
+            ? 'entry'
+            : page === 'decisions'
+              ? 'decision'
+              : page === 'tools'
+                ? 'asset'
+                : 'lead',
+        )
+      }
+      disabled={busy}
+    >
+      <Icon.Plus />
+      {page === 'finance'
+        ? 'Catat transaksi'
+        : page === 'decisions'
+          ? 'Catat keputusan'
+          : page === 'tools'
+            ? 'Catat aset'
+            : 'Tambah prospek'}
+    </button>
+  );
   return (
     <div className="app-shell">
-      <aside className="sidebar">
-        <a className="wordmark" href="#home">
-          somesea<span>HQ</span>
+      <aside className="rail">
+        <a className="brand" href="#home">
+          <Icon.Compass />
+          <span>
+            <span className="brand-name">somesea</span>
+            <span className="brand-sub">HQ · RUANG KERJA</span>
+          </span>
         </a>
-        <p className="workspace-label">Ruang kerja personal</p>
         <nav aria-label="Navigasi utama">
           {navigation.map((n) => (
             <a href={'#' + n.id} key={n.id} aria-current={page === n.id ? 'page' : undefined}>
-              <n.icon size={20} weight={page === n.id ? 'fill' : 'regular'} />
+              <n.icon />
               {n.title}
             </a>
           ))}
         </nav>
-        <div className="sidebar-bottom">
-          <p>
-            Pelan,
-            <br />
-            <strong>tapi terarah.</strong>
-          </p>
+        <div className="rail-bottom">
+          <p className="motto">Pelan, tapi terarah.</p>
           <a href="#data" aria-current={page === 'data' ? 'page' : undefined}>
-            <ArrowsClockwise size={18} /> Data & cadangan
+            <Icon.Sync /> Data & cadangan
           </a>
           <div className="profile">
-            <span className="avatar">S</span>
-            <div>
+            <span className="avatar" aria-hidden="true">
+              S
+            </span>
+            <span className="profile-name">
               <strong>Sams</strong>
               <small>@somesea__</small>
-            </div>
+            </span>
             <button
+              className="icon-button"
               aria-label="Keluar"
               title={'Keluar dari ' + email}
-              onClick={() => {
-                void run(
-                  async () => {
-                    await actions.signOut();
-                    return { ok: true, data: true };
-                  },
-                  () => {},
-                );
-              }}
+              onClick={signOut}
               disabled={busy}
             >
-              <SignOut size={20} />
+              <Icon.SignOut />
             </button>
           </div>
         </div>
       </aside>
-      <div className="main-shell">
-        <header className="topbar">
-          <span>
-            Ruang kerja <span className="slash">/</span>{' '}
-            {page === 'data' ? 'Data & cadangan' : navigation.find((n) => n.id === page)?.title}
-          </span>
-          <div className="sync">
-            <span>Revisi {snapshot.revision}</span>
-            <button onClick={reload} disabled={busy} aria-label="Muat ulang data">
-              <ArrowsClockwise size={17} />
-              <span>Muat ulang</span>
-            </button>
-          </div>
-        </header>
-        <main id="main" className="main-content">
-          <div className="intro">
+      <header className="mobile-bar">
+        <a className="brand" href="#home">
+          <Icon.Compass size={28} />
+          <span className="brand-name">somesea</span>
+        </a>
+        <span className="avatar" aria-hidden="true">
+          S
+        </span>
+      </header>
+      <main id="main" className="main">
+        <div className="main-content">
+          <header className="intro">
             <div>
-              <p className="eyebrow">SOMESEA WORKSPACE</p>
-              <h1>{titles[page]?.[0]}</h1>
-              <p>{titles[page]?.[1]}</p>
+              <p className="eyebrow">
+                {current.title} ·{' '}
+                {formatDate(now, {
+                  weekday: 'long',
+                  day: 'numeric',
+                  month: 'long',
+                  year: 'numeric',
+                })}
+                {page === 'home' && ' · ' + route.meta}
+              </p>
+              <h1>{titles[page][0]}</h1>
+              {titles[page][1] && <p className="lede">{titles[page][1]}</p>}
             </div>
-            {['home', 'crm', 'finance', 'decisions', 'tools'].includes(page) && (
-              <button
-                className="primary"
-                onClick={() =>
-                  add(
-                    page === 'finance'
-                      ? 'entry'
-                      : page === 'decisions'
-                        ? 'decision'
-                        : page === 'tools'
-                          ? 'asset'
-                          : 'lead',
-                  )
-                }
-                disabled={busy}
-              >
-                <Plus size={18} />
-                {page === 'finance'
-                  ? 'Catat transaksi'
-                  : page === 'decisions'
-                    ? 'Catat keputusan'
-                    : page === 'tools'
-                      ? 'Catat aset'
-                      : 'Tambah prospek'}
-              </button>
-            )}
-          </div>
+            <div className="intro-actions">
+              {page === 'home' && monthControl}
+              {primaryAction}
+            </div>
+          </header>
           {(notice || error) && (
             <div
               role={error ? 'alert' : 'status'}
@@ -469,7 +613,7 @@ export default function Workspace({ initial, documents, email, actions }: Props)
             >
               {error || notice}
               {error && (
-                <button onClick={reload} disabled={busy}>
+                <button className="secondary" onClick={reload} disabled={busy}>
                   Muat ulang data
                 </button>
               )}
@@ -477,36 +621,137 @@ export default function Workspace({ initial, documents, email, actions }: Props)
           )}
           {page === 'home' && (
             <>
-              <div className="hero-grid">
-                <section className="target-panel">
-                  <div className="section-heading">
-                    <h2>Arah bulan ini</h2>
-                    {monthControl}
+              <section className="card voyage" aria-labelledby="route-heading">
+                <div className="card-head">
+                  <div>
+                    <p className="label">Rute 90 hari</p>
+                    <h2 id="route-heading">{route.heading}</h2>
                   </div>
-                  <div className="target-value">{money(report.omzet)}</div>
+                  {trip.kind === 'unset' ? (
+                    <a className="button secondary" href="#road">
+                      Tetapkan tanggal mulai
+                    </a>
+                  ) : (
+                    <a className="text-link" href="#road">
+                      Buka roadmap <Icon.ArrowRight />
+                    </a>
+                  )}
+                </div>
+                <div className="route-scroll">
+                  <div
+                    className="route"
+                    style={{ '--ship': ship + '%', '--fill': ship - 6.25 + '%' } as CSSProperties}
+                  >
+                    <div className="route-line" aria-hidden="true" />
+                    {trip.kind !== 'unset' && trip.kind !== 'before' && (
+                      <div className="route-fill" aria-hidden="true" />
+                    )}
+                    <div
+                      className={
+                        'route-ship' +
+                        (trip.kind === 'unset' || trip.kind === 'before' ? ' dock' : '')
+                      }
+                      aria-hidden="true"
+                    >
+                      <span>{route.label}</span>
+                      <Icon.Ship />
+                    </div>
+                    <div className="waypoints">
+                      {roadmap.map(([days, title], i) => (
+                        <button
+                          key={days}
+                          className={'waypoint ' + phaseStatus(i)}
+                          aria-pressed={i === selected}
+                          aria-label={`Fase ${i + 1}, hari ${days}, ${title}`}
+                          onClick={() => setWaypoint(i)}
+                        >
+                          <span className="dot" aria-hidden="true" />
+                          <span className="wp-days">{days}</span>
+                          <span className="wp-title">{title}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                <p className="route-detail">
+                  <span className="label">Hari {roadmap[selected][0]}</span>
+                  <span className={'state-chip ' + phaseStatus(selected)}>
+                    {trip.kind === 'unset' || trip.kind === 'before'
+                      ? state.road.includes(selected)
+                        ? 'Selesai'
+                        : 'Belum dimulai'
+                      : { done: 'Selesai', now: 'Sedang berjalan', next: 'Berikutnya' }[
+                          phaseStatus(selected)
+                        ]}
+                  </span>
+                  <span className="route-desc">
+                    <strong>{roadmap[selected][1]}.</strong> <span>{roadmap[selected][2]}</span>
+                  </span>
+                </p>
+              </section>
+              <div className="grid-split">
+                <section className="card target" aria-labelledby="target-heading">
+                  <div className="card-head baseline">
+                    <h2 id="target-heading" className="label">
+                      Pelabuhan tujuan · {monthName(month)}
+                    </h2>
+                    <span className="target-goal">
+                      Target <strong>Rp5.000.000</strong> / bulan
+                    </span>
+                  </div>
+                  <p className="target-value">{money(report.omzet)}</p>
                   <p className="target-caption">
-                    dari target <strong>Rp5.000.000</strong> / bulan
+                    <strong>{Math.round(report.percent)}%</strong> menuju pelabuhan ·{' '}
+                    {money(report.remaining)} lagi
                   </p>
-                  <progress
-                    aria-label="Pencapaian target omzet"
-                    max={100}
-                    value={Math.min(100, report.percent)}
-                  />
-                  <div className="spread">
-                    <span>{Math.round(report.percent)}% dari target</span>
-                    <span>{money(report.remaining)} lagi</span>
+                  <div
+                    className="horizon"
+                    role="img"
+                    aria-label={`Pencapaian target omzet ${Math.round(report.percent)}%`}
+                    style={{ '--pct': percent + '%' } as CSSProperties}
+                  >
+                    <div className="horizon-line" />
+                    <div className="horizon-fill" />
+                    <div
+                      className={
+                        'horizon-ship' + (percent < 4 ? ' start' : percent > 96 ? ' end' : '')
+                      }
+                    >
+                      <Icon.Ship />
+                    </div>
+                    <div className="horizon-port" />
+                  </div>
+                  <div className="horizon-scale" aria-hidden="true">
+                    {['0', '1 jt', '2 jt', '3 jt', '4 jt', '5 jt'].map((t) => (
+                      <span key={t}>{t}</span>
+                    ))}
                   </div>
                   <p className="target-foot">
                     {report.omzet
-                      ? 'Dari nilai pekerjaan yang telah diterima.'
+                      ? 'Dari nilai pekerjaan yang telah diterima bulan ini.'
                       : 'Belum ada omzet yang dicatat bulan ini.'}
                   </p>
-                </section>
-                <section className="focus-panel">
-                  <div className="section-heading">
-                    <h2>Mulai dari yang penting</h2>
-                    <span className="small">{state.tasks.length}/3</span>
+                  <div className="readings">
+                    <div>
+                      <p className="reading">{active.length}</p>
+                      <p>Prospek aktif</p>
+                    </div>
+                    <a href="#crm" onClick={() => setDueOnly(true)}>
+                      <p className={'reading' + (due.length ? ' alert' : '')}>{due.length}</p>
+                      <p>Follow-up jatuh tempo →</p>
+                    </a>
+                    <div>
+                      <p className="reading">{state.road.length}/8</p>
+                      <p>Fase selesai</p>
+                    </div>
                   </div>
+                </section>
+                <section className="card focus" aria-labelledby="focus-heading">
+                  <div className="card-head baseline">
+                    <h2 id="focus-heading">Mulai dari yang penting</h2>
+                    <span className="count">{state.tasks.length}/3</span>
+                  </div>
+                  <p className="card-note">Tiga langkah kecil sebelum berlayar lebih jauh.</p>
                   {focus.map((f, i) => (
                     <label className="focus-row" key={f}>
                       <input
@@ -527,87 +772,116 @@ export default function Workspace({ initial, documents, email, actions }: Props)
                       <span>{f}</span>
                     </label>
                   ))}
-                  <a className="text-link" href="#road">
-                    Beri ruang untuk langkah kecil <ArrowRight size={17} />
+                  <a className="text-link push" href="#road">
+                    Beri ruang untuk langkah kecil <Icon.ArrowRight />
                   </a>
                 </section>
               </div>
-              <div className="stats">
-                <article>
-                  <Users size={21} />
-                  <div>
-                    <span>Prospek aktif</span>
-                    <strong>{active.length}</strong>
-                    <small>Relasi yang sedang dibangun</small>
-                  </div>
-                </article>
-                <a href="#crm" onClick={() => setDueOnly(true)}>
-                  <ArrowsClockwise size={21} />
-                  <div>
-                    <span>Follow-up jatuh tempo</span>
-                    <strong>{due.length}</strong>
-                    <small>Langkah kecil berikutnya</small>
-                  </div>
-                </a>
-                <article>
-                  <Path size={21} />
-                  <div>
-                    <span>Roadmap selesai</span>
-                    <strong>
-                      {state.road.length}
-                      <em> / 8</em>
-                    </strong>
-                    <small>Fase menuju 90 hari</small>
-                  </div>
-                </article>
-              </div>
-              <div className="lower-grid">
-                <section className="panel">
-                  <div className="section-heading">
-                    <h2>Pipeline penjualan</h2>
-                    <a href="#crm">
-                      Buka CRM <ArrowUpRight size={16} />
+              <div className="grid-split">
+                <section className="card" aria-labelledby="pipeline-heading">
+                  <div className="card-head">
+                    <h2 id="pipeline-heading">Pipeline penjualan</h2>
+                    <a className="text-link" href="#crm">
+                      Buka CRM <Icon.ArrowUpRight />
                     </a>
                   </div>
                   {state.leads.length ? (
-                    leadList(state.leads.slice(0, 4))
+                    <>
+                      <div className="table-wrap">
+                        <ol className="stage-track">
+                          {pipeline.map((s) => {
+                            const count = state.leads.filter((l) => l.stage === s).length;
+                            return (
+                              <li key={s} className={count ? 'filled' : ''}>
+                                <span className="dot" aria-hidden="true" />
+                                <strong>{count}</strong>
+                                <span>{s}</span>
+                              </li>
+                            );
+                          })}
+                        </ol>
+                      </div>
+                      {pipelineRows.length ? (
+                        <div className="table-wrap">
+                          <table className="compact">
+                            <thead>
+                              <tr>
+                                <th>Prospek</th>
+                                <th>Tahap</th>
+                                <th>Tindak lanjut</th>
+                                <th className="numeric">Nilai</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {pipelineRows.map((l) => {
+                                const next = followUp(l, now);
+                                return (
+                                  <tr key={l.id}>
+                                    <td>
+                                      <strong>{l.name}</strong>
+                                      <small>{l.problem}</small>
+                                    </td>
+                                    <td>{l.stage}</td>
+                                    <td className={next.due ? 'due nowrap' : 'muted nowrap'}>
+                                      {next.text}
+                                    </td>
+                                    <td className={'numeric' + (l.value ? '' : ' muted')}>
+                                      {l.value ? money(l.value) : 'belum ada'}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : (
+                        <p className="card-note">
+                          Semua prospek sudah ditutup. Buka CRM untuk melihat riwayatnya.
+                        </p>
+                      )}
+                    </>
                   ) : (
                     <Empty title="Relasi pertama dimulai dari percakapan.">
                       <p>
-                        Tambahkan calon klien, pahami masalahnya,
-                        <br />
-                        lalu tentukan langkah berikutnya.
+                        Tambahkan calon klien, pahami masalahnya, lalu tentukan langkah berikutnya.
                       </p>
                       <button className="secondary" onClick={() => add('lead')}>
-                        Tambah prospek pertama <Plus size={16} />
+                        <Icon.Plus /> Tambah prospek pertama
                       </button>
                     </Empty>
                   )}
                 </section>
-                <section className="rhythm-panel">
-                  <Badge>USULAN</Badge>
-                  <h2>
-              Bangun fondasi.{' '}
-              <br />
-                    Temukan ritmemu.
-                  </h2>
-                  <p>Uji penawaran, dengarkan kebutuhan, lalu ulangi proses yang memberi hasil.</p>
-                  <ol className="rhythm">
-                    {['Fondasi', 'Bukti', 'Ritme'].map((x, i) => (
-                      <li key={x}>
-                        <span>0{i + 1}</span>
-                        <div>
-                          <strong>{x}</strong>
-                          <small>
-                            Hari {i * 30 + 1}–{(i + 1) * 30}
-                          </small>
-                        </div>
-                      </li>
+                <section className="card logbook" aria-labelledby="log-heading">
+                  <div className="card-head">
+                    <h2 id="log-heading">Buku log</h2>
+                    <a className="text-link" href="#decisions">
+                      Decision log <Icon.ArrowUpRight />
+                    </a>
+                  </div>
+                  {!state.decisions.length && (
+                    <p className="card-note">
+                      Fondasi dari dokumen sumber. Keputusanmu sendiri akan tercatat di sini.
+                    </p>
+                  )}
+                  <div>
+                    {logRows.map((r) => (
+                      <LogEntry key={r.title} {...r} />
                     ))}
-                  </ol>
-                  <a className="text-link" href="#road">
-                    Lihat roadmap <ArrowUpRight size={17} />
-                  </a>
+                  </div>
+                  <div className="legend" aria-hidden="true">
+                    {['FINAL', 'USULAN', 'EKSPERIMEN', 'BELUM TERVERIFIKASI'].map((s) => (
+                      <span key={s}>
+                        <span
+                          className={
+                            'flag small ' +
+                            ({ FINAL: 'final', USULAN: 'usulan', EKSPERIMEN: 'eksperimen' }[s] ??
+                              'unknown')
+                          }
+                        />
+                        {s}
+                      </span>
+                    ))}
+                  </div>
                 </section>
               </div>
             </>
@@ -640,9 +914,9 @@ export default function Workspace({ initial, documents, email, actions }: Props)
                   />{' '}
                   Jatuh tempo
                 </label>
-                <span className="small">{filteredLeads.length} prospek</span>
+                <span className="count">{filteredLeads.length} prospek</span>
               </div>
-              <section className="panel">
+              <section className="card">
                 {filteredLeads.length ? (
                   leadList(filteredLeads)
                 ) : (
@@ -665,7 +939,7 @@ export default function Workspace({ initial, documents, email, actions }: Props)
           {page === 'road' && (
             <>
               <div className="toolbar">
-                <label>
+                <label className="inline-label">
                   Tanggal mulai
                   <input
                     type="date"
@@ -685,17 +959,14 @@ export default function Workspace({ initial, documents, email, actions }: Props)
                   />
                 </label>
                 <Badge>USULAN</Badge>
-                <span>{state.road.length} dari 8 fase selesai</span>
+                <span className="count">{state.road.length} dari 8 fase selesai</span>
               </div>
-              <div className="road-grid">
+              <ol className="road-grid">
                 {roadmap.map(([day, title, desc], i) => (
-                  <article
-                    className={'road-card ' + (state.road.includes(i) ? 'done' : '')}
-                    key={day}
-                  >
+                  <li className={'road-card ' + phaseStatus(i)} key={day}>
                     <div className="road-number">
-                      <small>HARI</small>
-                      <strong>{day}</strong>
+                      <span className="dot" aria-hidden="true" />
+                      <span className="label">Hari {day}</span>
                     </div>
                     <div>
                       <h2>{title}</h2>
@@ -719,9 +990,9 @@ export default function Workspace({ initial, documents, email, actions }: Props)
                         Fase selesai
                       </label>
                     </div>
-                  </article>
+                  </li>
                 ))}
-              </div>
+              </ol>
               <p className="footnote">
                 Tanggal mulai belum ditetapkan sampai kamu mengisinya. Rincian evaluasi hari 30, 60,
                 dan 90 tersedia di Pustaka HQ.
@@ -730,7 +1001,7 @@ export default function Workspace({ initial, documents, email, actions }: Props)
           )}
           {page === 'finance' && (
             <>
-              {monthControl}
+              <div className="toolbar">{monthControl}</div>
               <div className="finance-stats">
                 {[
                   ['Omzet', report.omzet],
@@ -738,16 +1009,16 @@ export default function Workspace({ initial, documents, email, actions }: Props)
                   ['Biaya', report.cost],
                   ['Arus kas bersih', report.net],
                 ].map(([name, amount]) => (
-                  <article key={name}>
-                    <span>{name}</span>
-                    <strong>{money(Number(amount))}</strong>
+                  <article key={name} className="card">
+                    <p className="label">{name}</p>
+                    <strong className="reading">{money(Number(amount))}</strong>
                     <small>
-                      {name === 'Arus kas bersih' ? 'Kas masuk dikurangi biaya' : 'Bulan ' + month}
+                      {name === 'Arus kas bersih' ? 'Kas masuk dikurangi biaya' : monthName(month)}
                     </small>
                   </article>
                 ))}
               </div>
-              <section className="panel">
+              <section className="card">
                 {state.entries.filter((e) => e.date.startsWith(month)).length ? (
                   <div className="table-wrap">
                     <table>
@@ -756,7 +1027,7 @@ export default function Workspace({ initial, documents, email, actions }: Props)
                           <th>Tanggal</th>
                           <th>Uraian / proyek</th>
                           <th>Jenis</th>
-                          <th>Nilai</th>
+                          <th className="numeric">Nilai</th>
                           <th>Aksi</th>
                         </tr>
                       </thead>
@@ -766,7 +1037,7 @@ export default function Workspace({ initial, documents, email, actions }: Props)
                           .sort((a, b) => b.date.localeCompare(a.date))
                           .map((e) => (
                             <tr key={e.id}>
-                              <td>{e.date}</td>
+                              <td className="mono nowrap">{e.date}</td>
                               <td>
                                 <strong>{e.title}</strong>
                               </td>
@@ -790,14 +1061,12 @@ export default function Workspace({ initial, documents, email, actions }: Props)
                 ) : (
                   <Empty title="Belum ada catatan bulan ini.">
                     <p>
-                      Catat omzet saat pekerjaan diterima.
-                      <br />
-                      Catat kas saat uang benar-benar masuk.
+                      Catat omzet saat pekerjaan diterima. Catat kas saat uang benar-benar masuk.
                     </p>
                   </Empty>
                 )}
               </section>
-              <div className="notice">
+              <div className="note">
                 <strong>DP adalah kas, bukan tambahan omzet.</strong>
                 <p>
                   Nilai pekerjaan dicatat sekali sebagai omzet. Arus kas bersih bukan laba. Angka di
@@ -816,10 +1085,10 @@ export default function Workspace({ initial, documents, email, actions }: Props)
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                 />
-                <span className="small">{documents.length} dokumen sumber</span>
+                <span className="count">{documents.length} dokumen sumber</span>
               </div>
               <div className="library">
-                <nav aria-label="Daftar dokumen">
+                <nav aria-label="Daftar dokumen" className="card">
                   {documents
                     .filter((d) =>
                       (d.title + ' ' + d.path + ' ' + d.content)
@@ -837,9 +1106,9 @@ export default function Workspace({ initial, documents, email, actions }: Props)
                       </button>
                     ))}
                 </nav>
-                <article className="document">
+                <article className="card document">
                   <div className="document-head">
-                    <span>{selectedDoc?.path}</span>
+                    <span className="label">{selectedDoc?.path}</span>
                     <button
                       className="secondary"
                       onClick={() =>
@@ -850,7 +1119,7 @@ export default function Workspace({ initial, documents, email, actions }: Props)
                         )
                       }
                     >
-                      <DownloadSimple size={17} />
+                      <Icon.Download />
                       Unduh .md
                     </button>
                   </div>
@@ -907,10 +1176,10 @@ export default function Workspace({ initial, documents, email, actions }: Props)
                   ))}
                 </select>
               </div>
-              <section className="panel decision-list">
-                <div className="section-heading">
+              <section className="card">
+                <div className="card-head">
                   <h2>Catatan kerja</h2>
-                  <span className="small">{state.decisions.length} catatan</span>
+                  <span className="count">{state.decisions.length} catatan</span>
                 </div>
                 {state.decisions
                   .filter(
@@ -937,11 +1206,11 @@ export default function Workspace({ initial, documents, email, actions }: Props)
                   </Empty>
                 )}
               </section>
-              <section className="panel source-decisions">
-                <div className="section-heading">
+              <section className="card">
+                <div className="card-head">
                   <h2>Fondasi dari dokumen sumber</h2>
-                  <a href="#docs">
-                    Lihat sumber <ArrowUpRight size={16} />
+                  <a className="text-link" href="#docs">
+                    Lihat sumber <Icon.ArrowUpRight />
                   </a>
                 </div>
                 {foundations
@@ -959,7 +1228,7 @@ export default function Workspace({ initial, documents, email, actions }: Props)
                       <Badge>FINAL</Badge>
                     </article>
                   ))}
-                <p className="small">
+                <p className="card-note">
                   Fondasi baca-saja. Seluruh usulan dan riwayat keputusan tetap tersedia dalam 18
                   dokumen sumber.
                 </p>
@@ -968,10 +1237,10 @@ export default function Workspace({ initial, documents, email, actions }: Props)
           )}
           {page === 'tools' && (
             <>
-              <section className="panel">
-                <div className="section-heading">
+              <section className="card">
+                <div className="card-head">
                   <h2>Inventaris milikmu</h2>
-                  <span className="small">{state.assets.length} aset dicatat</span>
+                  <span className="count">{state.assets.length} aset dicatat</span>
                 </div>
                 {state.assets.length ? (
                   state.assets.map((a) => (
@@ -980,7 +1249,7 @@ export default function Workspace({ initial, documents, email, actions }: Props)
                         <Badge>{a.status}</Badge>
                         <h3>{a.title}</h3>
                         <p>{a.location || 'Lokasi belum dicatat'}</p>
-                        <p>{a.notes}</p>
+                        {a.notes && <p>{a.notes}</p>}
                       </div>
                       <div className="row-actions">
                         <button onClick={() => add('asset', a)}>Edit</button>
@@ -991,18 +1260,17 @@ export default function Workspace({ initial, documents, email, actions }: Props)
                 ) : (
                   <Empty title="Mulai dari yang benar-benar dipakai.">
                     <p>
-                      Catat lokasi aset dan pengelolaan akses.
-                      <br />
-                      Simpan kata sandi dan API key di pengelola rahasia.
+                      Catat lokasi aset dan pengelolaan akses. Simpan kata sandi dan API key di
+                      pengelola rahasia.
                     </p>
                   </Empty>
                 )}
               </section>
-              <section className="panel source-decisions">
-                <div className="section-heading">
+              <section className="card">
+                <div className="card-head">
                   <h2>Status referensi sumber</h2>
-                  <a href="#docs">
-                    Inventaris asli <ArrowUpRight size={16} />
+                  <a className="text-link" href="#docs">
+                    Inventaris asli <Icon.ArrowUpRight />
                   </a>
                 </div>
                 {referenceAssets.map(([title, status, note]) => (
@@ -1019,31 +1287,31 @@ export default function Workspace({ initial, documents, email, actions }: Props)
           )}
           {page === 'data' && (
             <div className="data-layout">
-              <section className="panel">
-                <div className="section-heading">
+              <section className="card">
+                <div className="card-head">
                   <h2>Cadangan yang bisa dibawa</h2>
-                  <DownloadSimple size={22} />
+                  <Icon.Download size={20} />
                 </div>
                 <p>
                   Ekspor seluruh prospek, transaksi, roadmap, keputusan, dan inventaris milik
                   akunmu. Dokumen bisnis dapat diunduh satu per satu dari Pustaka HQ.
                 </p>
                 <div className="data-count">
-                  <strong>{dataRecords}</strong>
+                  <strong className="reading">{dataRecords}</strong>
                   <span>catatan operasional · revisi {snapshot.revision}</span>
                 </div>
                 <button className="primary" onClick={exportData} disabled={busy}>
-                  <DownloadSimple size={18} />
+                  <Icon.Download />
                   Ekspor data JSON
                 </button>
-                <p className="small">
+                <p className="card-note">
                   File JSON berisi data bisnis pribadi. Cadangan manual bukan backup otomatis.
                 </p>
               </section>
-              <section className="panel">
-                <div className="section-heading">
+              <section className="card">
+                <div className="card-head">
                   <h2>Pindahkan data ke HQ</h2>
-                  <UploadSimple size={22} />
+                  <Icon.Upload size={20} />
                 </div>
                 <p>Mendukung ekspor JSON aplikasi lama (v1) dan HQ baru (v2). Maksimal 2 MB.</p>
                 <label className="file-label">
@@ -1087,7 +1355,7 @@ export default function Workspace({ initial, documents, email, actions }: Props)
                     <option value="replace">Ganti seluruh data operasional</option>
                   </select>
                 </label>
-                <p className="small">
+                <p className="card-note">
                   Gabung memakai ID sebagai identitas. ID yang sama mempertahankan data saat ini,
                   termasuk jika isi berbeda. Isi identik dengan ID berbeda dianggap catatan
                   terpisah.
@@ -1108,7 +1376,7 @@ export default function Workspace({ initial, documents, email, actions }: Props)
                 >
                   Pratinjau {fileName && 'cadangan'}
                 </button>
-                {importPreview && (
+                {preview && (
                   <div className="import-preview">
                     <h3>Pratinjau sebelum menyimpan</h3>
                     <p>
@@ -1117,7 +1385,7 @@ export default function Workspace({ initial, documents, email, actions }: Props)
                         : 'Catatan baru ditambahkan; data dengan ID sama tidak ditimpa. Penanda roadmap digabung, tanggal mulai saat ini dipertahankan.'}
                     </p>
                     <div className="table-wrap">
-                      <table>
+                      <table className="compact">
                         <thead>
                           <tr>
                             <th>Data</th>
@@ -1128,7 +1396,7 @@ export default function Workspace({ initial, documents, email, actions }: Props)
                           </tr>
                         </thead>
                         <tbody>
-                          {Object.entries(importPreview.counts).map(([k, v]) => (
+                          {Object.entries(preview.counts).map(([k, v]) => (
                             <tr key={k}>
                               <td>
                                 {
@@ -1140,10 +1408,10 @@ export default function Workspace({ initial, documents, email, actions }: Props)
                                   }[k]
                                 }
                               </td>
-                              <td>{v.incoming}</td>
-                              <td>{v.duplicates}</td>
-                              <td>{v.conflicts}</td>
-                              <td>{v.added}</td>
+                              <td className="mono">{v.incoming}</td>
+                              <td className="mono">{v.duplicates}</td>
+                              <td className="mono">{v.conflicts}</td>
+                              <td className="mono">{v.added}</td>
                             </tr>
                           ))}
                         </tbody>
@@ -1176,8 +1444,8 @@ export default function Workspace({ initial, documents, email, actions }: Props)
                             actions.commitImport({
                               raw,
                               mode,
-                              revision: importPreview.revision,
-                              digest: importPreview.digest,
+                              revision: preview.revision,
+                              digest: preview.digest,
                               confirmation,
                             }),
                           (data) => {
@@ -1190,7 +1458,7 @@ export default function Workspace({ initial, documents, email, actions }: Props)
                         )
                       }
                     >
-                      <Check size={18} />
+                      <Icon.Check />
                       Konfirmasi impor
                     </button>
                   </div>
@@ -1199,13 +1467,60 @@ export default function Workspace({ initial, documents, email, actions }: Props)
             </div>
           )}
           <footer className="app-footer">
-            <span>
-              Somesea HQ <span className="slash">/</span> Personal, dekat, bertumbuh.
+            <span>Somesea HQ · Pelan, tapi terarah.</span>
+            <span className="sync">
+              Tersimpan di akunmu · revisi {snapshot.revision}
+              <button onClick={reload} disabled={busy} aria-label="Muat ulang data">
+                <Icon.Sync size={16} />
+                Muat ulang
+              </button>
             </span>
-            <span>Aset Business OS lama belum dipulihkan.</span>
           </footer>
-        </main>
-      </div>
+        </div>
+      </main>
+      <nav className="tabbar" aria-label="Navigasi utama">
+        {tabs.map((n) => (
+          <a
+            href={'#' + n.id}
+            key={n.id}
+            aria-label={n.title}
+            aria-current={page === n.id ? 'page' : undefined}
+          >
+            <n.icon size={20} />
+            {n.short}
+          </a>
+        ))}
+        <button
+          aria-expanded={sheet}
+          aria-controls="more-sheet"
+          className={more.some((n) => n.id === page) ? 'current' : ''}
+          onClick={() => setSheet(!sheet)}
+        >
+          <Icon.Menu size={20} />
+          Lainnya
+        </button>
+        {sheet && (
+          <>
+            <button
+              className="sheet-backdrop"
+              aria-label="Tutup menu"
+              onClick={() => setSheet(false)}
+            />
+            <div id="more-sheet" className="sheet">
+              {more.map((n) => (
+                <a href={'#' + n.id} key={n.id} aria-current={page === n.id ? 'page' : undefined}>
+                  <n.icon />
+                  {n.title}
+                </a>
+              ))}
+              <button onClick={signOut} disabled={busy} title={'Keluar dari ' + email}>
+                <Icon.SignOut />
+                Keluar
+              </button>
+            </div>
+          </>
+        )}
+      </nav>
       <dialog
         ref={dialog}
         onCancel={(e) => {
@@ -1224,8 +1539,13 @@ export default function Workspace({ initial, documents, email, actions }: Props)
                   editor?.kind ?? 'lead'
                 ] ?? 'catatan')}
           </h2>
-          <button aria-label="Tutup formulir" disabled={busy} onClick={() => setEditor(null)}>
-            <X size={22} />
+          <button
+            className="icon-button"
+            aria-label="Tutup formulir"
+            disabled={busy}
+            onClick={() => setEditor(null)}
+          >
+            <Icon.Close size={20} />
           </button>
         </div>
         <form onSubmit={submitEditor}>
@@ -1257,7 +1577,7 @@ export default function Workspace({ initial, documents, email, actions }: Props)
                   {select('type', 'Jenis catatan', kinds)}
                   {field('value', 'Nilai (Rp)', 'number')}
                   {field('date', 'Tanggal', 'date', true, String(editor.value?.date ?? today()))}
-                  <p className="small">
+                  <p className="card-note">
                     Omzet dan pembayaran dicatat terpisah. Jangan hitung DP sebagai omzet tambahan.
                   </p>
                 </>
@@ -1287,7 +1607,7 @@ export default function Workspace({ initial, documents, email, actions }: Props)
                       defaultValue={String(editor.value?.notes ?? '')}
                     />
                   </label>
-                  <p className="small">
+                  <p className="card-note">
                     Catat lokasi pengelolaan akses. Jangan simpan kata sandi atau API key.
                   </p>
                 </>

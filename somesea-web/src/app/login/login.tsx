@@ -1,14 +1,19 @@
 'use client';
 import { useState } from 'react';
 import { authenticate } from '@/app/actions';
+import { Compass } from '@/components/icons';
 export default function Login({ configured }: { configured: boolean }) {
   const [error, setError] = useState(''),
     [busy, setBusy] = useState(false);
   return (
     <main id="main" className="login-shell">
       <section className="login-story">
-        <a className="wordmark" href="/">
-          somesea<span>HQ</span>
+        <a className="brand" href="/">
+          <Compass />
+          <span>
+            <span className="brand-name">somesea</span>
+            <span className="brand-sub">HQ · RUANG KERJA</span>
+          </span>
         </a>
         <div>
           <p className="eyebrow">RUANG KERJA PERSONAL / SAMS</p>

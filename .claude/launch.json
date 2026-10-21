@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "ui-fixture",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": ["/c", "cd somesea-web && node node_modules/vite/bin/vite.js --config tests/ui/vite.config.ts"],
+      "port": 4173
+    },
+    {
+      "name": "next-dev",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": ["/c", "cd somesea-web && node node_modules/next/dist/bin/next dev --hostname 127.0.0.1 --port 4174"],
+      "port": 4174
+    }
+  ]
+}

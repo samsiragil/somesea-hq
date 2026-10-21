@@ -1,9 +1,18 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
+// Di ponsel, Pustaka, Decision log, Tools, dan Data berada di balik tombol "Lainnya".
+async function go(page: Page, name: string) {
+  const more = page.getByRole('button', { name: 'Lainnya' });
+  const tab = page
+    .getByRole('navigation', { name: 'Navigasi utama' })
+    .getByRole('link', { name, exact: true });
+  if ((await more.isVisible()) && !(await tab.isVisible())) await more.click();
+  await page.locator('.rail, .tabbar').getByRole('link', { name, exact: true }).click();
+}
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
 });
 test('dashboard kosong, 7 navigasi, 18 dokumen, dan tanpa overflow', async ({ page }, info) => {
-  await expect(page.getByRole('heading', { name: 'Selamat datang, Sams.' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Selamat berlayar, Sams.' })).toBeVisible();
   await expect(page.getByText('Belum ada omzet yang dicatat bulan ini.')).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   expect(await page.evaluate(() => innerWidth)).toBe(page.viewportSize()!.width);
@@ -19,15 +28,12 @@ test('dashboard kosong, 7 navigasi, 18 dokumen, dan tanpa overflow', async ({ pa
     'Decision log',
     'Tools & aset',
   ]) {
-    await page
-      .getByRole('navigation', { name: 'Navigasi utama' })
-      .getByRole('link', { name, exact: true })
-      .click();
+    await go(page, name);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
       true,
     );
   }
-  await page.getByRole('link', { name: 'Pustaka HQ', exact: true }).click();
+  await go(page, 'Pustaka HQ');
   await expect(page.getByText('18 dokumen sumber')).toBeVisible();
   await expect(
     page.getByRole('navigation', { name: 'Daftar dokumen' }).getByRole('button'),
@@ -43,7 +49,7 @@ test('CRM CRUD, pencarian, filter, dan tindak lanjut', async ({ page }) => {
   await dialog.getByLabel('Tanggal tindak lanjut').fill('2026-01-01');
   await dialog.getByRole('button', { name: 'Simpan perubahan' }).click();
   await expect(dialog).not.toBeVisible();
-  await page.getByRole('link', { name: 'CRM & penjualan' }).click();
+  await go(page, 'CRM & penjualan');
   await expect(page.getByText('Hanya pengujian', { exact: true })).toBeVisible();
   await page.getByLabel('Cari prospek').fill('tidak cocok');
   await expect(page.getByText('Tidak ada hasil yang cocok.')).toBeVisible();
@@ -60,7 +66,7 @@ test('CRM CRUD, pencarian, filter, dan tindak lanjut', async ({ page }) => {
   await expect(page.getByText('CRM siap untuk prospek pertamamu.')).toBeVisible();
 });
 test('ledger membedakan omzet dan kas serta form validasi', async ({ page }) => {
-  await page.getByRole('link', { name: 'Keuangan', exact: true }).click();
+  await go(page, 'Keuangan');
   for (const [type, value] of [
     ['Omzet', '5000000'],
     ['Kas masuk', '2000000'],
@@ -83,7 +89,7 @@ test('ledger membedakan omzet dan kas serta form validasi', async ({ page }) => 
   });
 });
 test('impor v1 memerlukan pratinjau dan konfirmasi, ekspor v2 utuh', async ({ page }) => {
-  await page.getByRole('link', { name: 'Data & cadangan' }).click();
+  await go(page, 'Data & cadangan');
   const old = {
     version: 1,
     leads: [
@@ -103,13 +109,11 @@ test('impor v1 memerlukan pratinjau dan konfirmasi, ekspor v2 utuh', async ({ pa
     road: [2],
     start: '2026-10-20',
   };
-  await page
-    .getByLabel('Pilih cadangan JSON')
-    .setInputFiles({
-      name: 'v1.json',
-      mimeType: 'application/json',
-      buffer: Buffer.from(JSON.stringify(old)),
-    });
+  await page.getByLabel('Pilih cadangan JSON').setInputFiles({
+    name: 'v1.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify(old)),
+  });
   await page.getByRole('button', { name: 'Pratinjau cadangan' }).click();
   await expect(page.getByRole('heading', { name: 'Pratinjau sebelum menyimpan' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Konfirmasi impor' })).toBeDisabled();
@@ -143,13 +147,13 @@ test('halaman produksi menolak sesi kosong dan tidak menyajikan pustaka privat',
   });
 });
 test('roadmap, keputusan empat status, dan inventaris CRUD', async ({ page }) => {
-  await page.getByRole('link', { name: 'Roadmap 90 hari', exact: true }).click();
+  await go(page, 'Roadmap 90 hari');
   await page.getByLabel('Tanggal mulai roadmap').fill('2026-11-01');
   await page.getByRole('checkbox', { name: 'Fase selesai' }).first().check();
   await page.getByRole('button', { name: 'Muat ulang data' }).click();
   await expect(page.getByLabel('Tanggal mulai roadmap')).toHaveValue('2026-11-01');
   await expect(page.getByRole('checkbox', { name: 'Fase selesai' }).first()).toBeChecked();
-  await page.getByRole('link', { name: 'Decision log', exact: true }).click();
+  await go(page, 'Decision log');
   await page.getByRole('button', { name: 'Catat keputusan' }).click();
   const d = page.getByRole('dialog');
   await d.getByLabel('Keputusan / ide').fill('Keputusan hanya pengujian');
@@ -165,7 +169,7 @@ test('roadmap, keputusan empat status, dan inventaris CRUD', async ({ page }) =>
   await page.getByLabel('Filter status keputusan').selectOption('');
   await page.getByRole('button', { name: 'Hapus', exact: true }).click();
   await d.getByRole('button', { name: 'Hapus catatan', exact: true }).click();
-  await page.getByRole('link', { name: 'Tools & aset', exact: true }).click();
+  await go(page, 'Tools & aset');
   await page.getByRole('button', { name: 'Catat aset' }).click();
   await d.getByLabel('Nama tool / aset').fill('Aset hanya pengujian');
   await d.getByLabel('Lokasi aset / pengelolaan akses').fill('Lokasi pengujian');
@@ -179,29 +183,27 @@ test('roadmap, keputusan empat status, dan inventaris CRUD', async ({ page }) =>
   await expect(page.getByText('Aset hanya pengujian', { exact: true })).toHaveCount(0);
 });
 test('impor rusak ditolak dan ganti memerlukan konfirmasi cadangan', async ({ page }) => {
-  await page.getByRole('link', { name: 'Data & cadangan' }).click();
+  await go(page, 'Data & cadangan');
   await page
     .getByLabel('Pilih cadangan JSON')
     .setInputFiles({ name: 'rusak.json', mimeType: 'application/json', buffer: Buffer.from('{') });
   await page.getByRole('button', { name: 'Pratinjau cadangan' }).click();
   await expect(page.getByRole('alert')).toContainText('JSON tidak valid');
-  await page
-    .getByLabel('Pilih cadangan JSON')
-    .setInputFiles({
-      name: 'kosong.json',
-      mimeType: 'application/json',
-      buffer: Buffer.from(
-        JSON.stringify({
-          version: 1,
-          leads: [],
-          entries: [],
-          tasks: [],
-          road: [],
-          decisions: [],
-          start: '',
-        }),
-      ),
-    });
+  await page.getByLabel('Pilih cadangan JSON').setInputFiles({
+    name: 'kosong.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from(
+      JSON.stringify({
+        version: 1,
+        leads: [],
+        entries: [],
+        tasks: [],
+        road: [],
+        decisions: [],
+        start: '',
+      }),
+    ),
+  });
   await page.getByLabel('Cara impor').selectOption('replace');
   await page.getByRole('button', { name: 'Pratinjau cadangan' }).click();
   await page.getByLabel('Ketik IMPOR untuk mengonfirmasi').fill('IMPOR');
