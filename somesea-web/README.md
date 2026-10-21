@@ -57,3 +57,7 @@ Browser suite memakai fixture UI terisolasi tanpa backend di port 4173 serta apl
 ## Deployment
 
 Pilih root `somesea-web` dan framework Next.js pada Vercel, atur dua environment Supabase, lalu deploy. Tidak perlu service-role key. Status deploy harus dilihat pada laporan verifikasi; URL yang belum dibuka dan diuji tidak boleh disebut live.
+
+### Fokus saat ini: penyesuaian awal
+
+Halaman awal berisi panduan empat langkah dengan contoh, catatan tersimpan di Decision log, progres, dan evaluasi. Roadmap penjualan menjadi referensi tahap lanjutan; checklist sebelumnya tetap tersedia di Roadmap. Toggle Light/Dark di header mengingat preferensi browser.

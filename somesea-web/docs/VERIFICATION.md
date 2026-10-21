@@ -58,3 +58,13 @@ Screenshot desktop dan mobile ditinjau. Layout mobile yang sempat melebar telah 
 - [Supabase PostgreSQL RLS](https://supabase.com/docs/guides/database/postgres/row-level-security)
 - [Next.js Proxy](https://nextjs.org/docs/app/getting-started/proxy)
 - [Next.js di Vercel](https://vercel.com/docs/frameworks/full-stack/nextjs)
+
+## Penyesuaian awal — 21 Oktober 2026
+
+Halaman awal kini memandu empat langkah: ritme, arah latihan, audit bekal, dan latihan kecil. Setiap langkah memiliki alasan, tindakan, contoh yang bisa dibuka, kriteria selesai, serta catatan maksimal 500 karakter. Catatan disimpan sebagai keputusan dengan ID `prep-*`; EKSPERIMEN berarti proses, FINAL berarti pengguna menandai langkah selesai. Ini tidak mengesahkan kelayakan bisnis secara otomatis. Checklist lama tetap di Roadmap, tanpa mengubah ID atau isi data lama.
+
+Toggle Light/Dark berada di header setiap halaman workspace. Pilihan mengikuti sistem saat belum ada preferensi, lalu disimpan di localStorage browser; bukan data akun. Penyimpanan catatan tetap memakai server/Supabase yang sudah ada.
+
+Validasi: TypeScript lulus, 33 tes logika/database lulus (1 live-auth dilewati), 18 dokumen sumber cocok SHA-256. Build produksi berhasil memakai `next build --webpack`; Turbopack pada mesin Windows ini gagal membuat subprocess CSS. Pengujian browser memakai fixture terisolasi, bukan bukti sinkronisasi akun cloud. Belum dideploy.
+
+Browser: 16 skenario desktop/mobile lulus (15 pada run utama, 1 diulang setelah reload HMR mengganggu tes). Tampilan desktop light dan mobile dark ditinjau. Login produksi dan Supabase live tidak diuji ulang pada revisi ini.

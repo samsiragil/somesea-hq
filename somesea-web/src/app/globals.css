@@ -42,7 +42,7 @@
   font-synthesis: none;
 }
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme='light']) {
     --bg: #0a1a27;
     --surface: #0f2333;
     --sunk: #132b3e;
@@ -65,6 +65,29 @@
     --contour: rgba(111, 179, 218, 0.08);
     color-scheme: dark;
   }
+}
+:root[data-theme='dark'] {
+  --bg: #0a1a27;
+  --surface: #0f2333;
+  --sunk: #132b3e;
+  --line: #22405a;
+  --ink: #dce8f0;
+  --muted: #8aa3b5;
+  --depth: #6fb3da;
+  --depth-ink: #7cc0e6;
+  --signal: #ff7a45;
+  --signal-ink: #ff8f61;
+  --danger: #ff8a7a;
+  --final: #5dbb7c;
+  --usulan: #f0c445;
+  --rail: #06111a;
+  --rail-fg: #8aa3b5;
+  --rail-active: rgba(255, 255, 255, 0.07);
+  --rail-line: rgba(255, 255, 255, 0.1);
+  --btn-bg: #dce8f0;
+  --btn-fg: #0a1a27;
+  --contour: rgba(111, 179, 218, 0.08);
+  color-scheme: dark;
 }
 
 /* Dasar */
@@ -1852,5 +1875,202 @@ dialog .error-text {
     transition: none !important;
     animation: none !important;
     scroll-behavior: auto !important;
+  }
+}
+/* Panduan persiapan: satu langkah terpilih, detail yang bisa dibaca bertahap. */
+.prep-overview {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 220px;
+  gap: 36px;
+  padding: 28px 0;
+  border-block: 1px solid var(--line);
+}
+.prep-overview h2 {
+  font-family: var(--serif);
+  font-size: clamp(26px, 3vw, 36px);
+  font-weight: 500;
+  margin: 8px 0 14px;
+}
+.prep-overview p {
+  max-width: 65ch;
+}
+.prep-context {
+  margin-top: 16px;
+}
+.prep-progress {
+  border-left: 1px solid var(--line);
+  padding-left: 28px;
+}
+.prep-progress strong {
+  font-family: var(--mono);
+  font-size: 48px;
+  font-weight: 500;
+}
+.prep-progress strong span {
+  font-size: 24px;
+  color: var(--muted);
+}
+.prep-progress progress {
+  width: 100%;
+  accent-color: var(--depth);
+  margin: 16px 0 8px;
+  height: 8px;
+}
+.prep-progress small {
+  display: block;
+  color: var(--muted);
+}
+.prep-next {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 24px;
+  padding: 24px;
+  background: var(--sunk);
+  border-radius: var(--r-card);
+}
+.prep-next h2 {
+  margin: 6px 0;
+}
+.prep-next .primary {
+  flex-shrink: 0;
+}
+.prep-workbench {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+.prep-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.prep-steps button {
+  text-align: left;
+  justify-content: flex-start;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 18px 14px;
+  border: 1px solid transparent;
+}
+.prep-steps button[aria-current='step'] {
+  background: var(--surface);
+  border-color: var(--line);
+  box-shadow: inset 3px 0 var(--depth);
+}
+.prep-steps strong,
+.prep-steps small {
+  display: block;
+}
+.prep-steps small {
+  color: var(--muted);
+  font-weight: 400;
+  margin-top: 5px;
+}
+.prep-number {
+  font-family: var(--mono);
+  color: var(--depth-ink);
+}
+.prep-detail {
+  gap: 16px;
+  scroll-margin-top: 80px;
+}
+.prep-detail h2 {
+  font-size: 26px;
+}
+.prep-detail h3 {
+  font-size: 16px;
+}
+.prep-detail ol {
+  list-style: decimal;
+  padding-left: 24px;
+  margin: 0;
+}
+.prep-detail li {
+  padding-left: 6px;
+  margin-bottom: 12px;
+  line-height: 1.7;
+}
+.prep-detail details {
+  border-block: 1px solid var(--line);
+  padding: 14px 0;
+}
+.prep-detail summary {
+  cursor: pointer;
+  color: var(--depth-ink);
+  font-weight: 600;
+  min-height: 32px;
+}
+.prep-detail details p {
+  margin-top: 12px;
+}
+.prep-criteria {
+  border-left: 3px solid var(--depth);
+  padding-left: 16px;
+}
+.prep-detail form {
+  display: grid;
+  gap: 12px;
+  margin-top: 8px;
+}
+.prep-detail textarea {
+  resize: vertical;
+  min-height: 120px;
+}
+.prep-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.prep-review {
+  gap: 12px;
+}
+.prep-review p {
+  max-width: 75ch;
+}
+.theme-toggle {
+  min-width: 100px;
+}
+summary:focus-visible {
+  outline: 2px solid var(--depth);
+  outline-offset: 4px;
+}
+@media (max-width: 1100px) {
+  .prep-workbench {
+    grid-template-columns: 1fr;
+  }
+  .prep-steps {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+}
+@media (max-width: 600px) {
+  .prep-overview {
+    grid-template-columns: 1fr;
+    gap: 20px;
+    padding: 20px 0;
+  }
+  .prep-progress {
+    border-left: 0;
+    padding-left: 0;
+  }
+  .prep-progress strong {
+    font-size: 32px;
+  }
+  .prep-next {
+    align-items: flex-start;
+    flex-direction: column;
+    padding: 18px;
+  }
+  .prep-steps {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+  .prep-steps button {
+    padding: 12px;
+  }
+  .prep-actions {
+    flex-direction: column;
   }
 }

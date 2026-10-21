@@ -1,6 +1,8 @@
 'use client';
-import { useEffect, useRef, useState, type CSSProperties, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import Markdown from 'react-markdown';
+import Preparation from './preparation';
+import ThemeToggle from './theme-toggle';
 import remarkGfm from 'remark-gfm';
 import {
   foundations,
@@ -31,7 +33,7 @@ type Preview = Extract<
   { ok: true }
 >['data'];
 const navigation = [
-  { id: 'home', title: 'Overview', short: 'Overview', icon: Icon.Overview },
+  { id: 'home', title: 'Penyesuaian awal', short: 'Mulai', icon: Icon.Overview },
   { id: 'crm', title: 'CRM & penjualan', short: 'CRM', icon: Icon.People },
   { id: 'road', title: 'Roadmap 90 hari', short: 'Roadmap', icon: Icon.Route },
   { id: 'finance', title: 'Keuangan', short: 'Keuangan', icon: Icon.Wallet },
@@ -42,11 +44,6 @@ const navigation = [
 const dataPage = { id: 'data', title: 'Data & cadangan', short: 'Data', icon: Icon.Sync };
 const tabs = navigation.slice(0, 4),
   more = [...navigation.slice(4), dataPage];
-const focus = [
-  'Tetapkan kapasitas dan tanggal mulai',
-  'Pilih satu penawaran untuk diuji',
-  'Catat prospek pertama dan tindak lanjut',
-];
 const referenceAssets = [
   ['Pustaka bisnis', 'TERSEDIA', '18 dokumen sumber dapat dibaca di Pustaka HQ.'],
   ['Business OS lama', 'BELUM TERVERIFIKASI', 'Berkas asli belum tersedia untuk rekonsiliasi.'],
@@ -64,12 +61,18 @@ const referenceAssets = [
   ['Generator proposal', 'USULAN', 'Menunggu penawaran yang telah dipakai berulang.'],
 ];
 const titles: Record<string, [string, string]> = {
-  home: ['Selamat berlayar, Sams.', ''],
+  home: [
+    'Pelan dulu, rapikan pijakanmu.',
+    'Satu langkah yang jelas setiap sesi. Fokus sekarang: menemukan ritme dan menyiapkan cara kerja yang nyaman.',
+  ],
   crm: [
     'Relasi sebelum transaksi.',
     'Pahami kebutuhannya. Jaga percakapannya. Tentukan langkah berikutnya.',
   ],
-  road: ['90 hari, satu arah.', 'Rencana kerja yang mengikuti kapasitas nyata.'],
+  road: [
+    'Rencana untuk tahap berikutnya.',
+    'Referensi usulan 90 hari setelah penyesuaian awal. Mulai saat kapasitas dan latihanmu sudah cukup jelas; tanggal bukan ukuran kesiapan.',
+  ],
   finance: ['Angka yang memberi arah.', 'Pisahkan nilai pekerjaan, uang yang diterima, dan biaya.'],
   docs: ['Fondasi yang bisa dirujuk.', 'Seluruh dokumen bisnis, dengan konteks dan sumbernya.'],
   decisions: [
@@ -82,7 +85,6 @@ const titles: Record<string, [string, string]> = {
   ],
   data: ['Data tetap milikmu.', 'Cadangkan, pindahkan, dan tinjau sebelum mengimpor.'],
 };
-const pipeline = ['Baru', 'Dihubungi', 'Discovery', 'Qualified', 'Proposal', 'Won'] as const;
 const ranges = roadmap.map(([day]) => day.split('–').map(Number) as [number, number]);
 
 const utc = (d: string) => new Date(d + 'T00:00:00Z');
@@ -161,29 +163,6 @@ function Empty({ title, children }: { title: string; children?: React.ReactNode 
     </div>
   );
 }
-function LogEntry({ status, title, meta }: { status: string; title: string; meta: string }) {
-  return (
-    <div className="log-entry">
-      <span
-        aria-hidden="true"
-        className={
-          'flag ' +
-          (status === 'FINAL'
-            ? 'final'
-            : status === 'USULAN'
-              ? 'usulan'
-              : status === 'EKSPERIMEN'
-                ? 'eksperimen'
-                : 'unknown')
-        }
-      />
-      <div>
-        <p className="log-title">{title}</p>
-        <p className="log-meta">{meta}</p>
-      </div>
-    </div>
-  );
-}
 function download(name: string, content: string, type = 'application/json') {
   const url = URL.createObjectURL(new Blob([content], { type }));
   const a = document.createElement('a');
@@ -220,8 +199,7 @@ export default function Workspace({ initial, documents, email, actions }: Props)
     [preview, setPreview] = useState<Preview | null>(null);
   const [confirmation, setConfirmation] = useState(''),
     [backup, setBackup] = useState(false);
-  const [waypoint, setWaypoint] = useState<number | null>(null),
-    [sheet, setSheet] = useState(false);
+  const [sheet, setSheet] = useState(false);
   const dialog = useRef<HTMLDialogElement>(null),
     locked = useRef(false);
   const state = snapshot.state;
@@ -328,63 +306,6 @@ export default function Workspace({ initial, documents, email, actions }: Props)
   const trip = voyage(state.start, now);
   const phaseStatus = (i: number) =>
     state.road.includes(i) ? 'done' : trip.kind === 'active' && i === trip.index ? 'now' : 'next';
-  const selected = waypoint ?? Math.max(0, trip.index);
-  const ship =
-    trip.kind === 'active'
-      ? Math.min(
-          93.75,
-          ((trip.index +
-            0.5 +
-            (trip.day - ranges[trip.index][0]) /
-              (ranges[trip.index][1] - ranges[trip.index][0] + 1)) /
-            8) *
-            100,
-        )
-      : trip.kind === 'after'
-        ? 93.75
-        : 5;
-  const route = {
-    heading:
-      trip.kind === 'unset'
-        ? 'Tanggal mulai belum ditetapkan'
-        : trip.kind === 'before'
-          ? 'Berangkat ' +
-            formatDate(state.start, { day: 'numeric', month: 'long', year: 'numeric' })
-          : trip.kind === 'after'
-            ? 'Rute 90 hari selesai'
-            : `Fase ${trip.index + 1} dari 8 · ${roadmap[trip.index][1]}`,
-    label:
-      trip.kind === 'active'
-        ? `HARI ${trip.day}`
-        : trip.kind === 'after'
-          ? 'TIBA'
-          : trip.kind === 'before'
-            ? `H-${1 - trip.day}`
-            : 'DI DERMAGA',
-    meta:
-      trip.kind === 'active'
-        ? `hari ${trip.day} dari 90`
-        : trip.kind === 'after'
-          ? 'rute 90 hari selesai'
-          : trip.kind === 'before'
-            ? `berangkat ${1 - trip.day} hari lagi`
-            : 'rute belum dimulai',
-  };
-  const percent = Math.min(100, report.percent);
-  const pipelineRows = [...active]
-    .sort((a, b) => (a.date || '9999').localeCompare(b.date || '9999'))
-    .slice(0, 4);
-  const logRows = state.decisions.length
-    ? [...state.decisions]
-        .reverse()
-        .slice(0, 4)
-        .map((d) => ({ status: d.status, title: d.title, meta: `${d.status} · ${d.source}` }))
-    : foundations.slice(0, 4).map(([title, source]) => ({
-        status: 'FINAL',
-        title,
-        meta: 'FINAL · ' + source.split(' · ')[0],
-      }));
-
   const monthControl = (
     <label className="month-label">
       Bulan
@@ -506,7 +427,7 @@ export default function Workspace({ initial, documents, email, actions }: Props)
       </label>
     );
   }
-  const primaryAction = ['home', 'crm', 'finance', 'decisions', 'tools'].includes(page) && (
+  const primaryAction = ['crm', 'finance', 'decisions', 'tools'].includes(page) && (
     <button
       className="primary"
       onClick={() =>
@@ -596,13 +517,13 @@ export default function Workspace({ initial, documents, email, actions }: Props)
                   month: 'long',
                   year: 'numeric',
                 })}
-                {page === 'home' && ' · ' + route.meta}
+                {page === 'home' && ' · Fase persiapan'}
               </p>
               <h1>{titles[page][0]}</h1>
               {titles[page][1] && <p className="lede">{titles[page][1]}</p>}
             </div>
             <div className="intro-actions">
-              {page === 'home' && monthControl}
+              <ThemeToggle />
               {primaryAction}
             </div>
           </header>
@@ -619,273 +540,7 @@ export default function Workspace({ initial, documents, email, actions }: Props)
               )}
             </div>
           )}
-          {page === 'home' && (
-            <>
-              <section className="card voyage" aria-labelledby="route-heading">
-                <div className="card-head">
-                  <div>
-                    <p className="label">Rute 90 hari</p>
-                    <h2 id="route-heading">{route.heading}</h2>
-                  </div>
-                  {trip.kind === 'unset' ? (
-                    <a className="button secondary" href="#road">
-                      Tetapkan tanggal mulai
-                    </a>
-                  ) : (
-                    <a className="text-link" href="#road">
-                      Buka roadmap <Icon.ArrowRight />
-                    </a>
-                  )}
-                </div>
-                <div className="route-scroll">
-                  <div
-                    className="route"
-                    style={{ '--ship': ship + '%', '--fill': ship - 6.25 + '%' } as CSSProperties}
-                  >
-                    <div className="route-line" aria-hidden="true" />
-                    {trip.kind !== 'unset' && trip.kind !== 'before' && (
-                      <div className="route-fill" aria-hidden="true" />
-                    )}
-                    <div
-                      className={
-                        'route-ship' +
-                        (trip.kind === 'unset' || trip.kind === 'before' ? ' dock' : '')
-                      }
-                      aria-hidden="true"
-                    >
-                      <span>{route.label}</span>
-                      <Icon.Ship />
-                    </div>
-                    <div className="waypoints">
-                      {roadmap.map(([days, title], i) => (
-                        <button
-                          key={days}
-                          className={'waypoint ' + phaseStatus(i)}
-                          aria-pressed={i === selected}
-                          aria-label={`Fase ${i + 1}, hari ${days}, ${title}`}
-                          onClick={() => setWaypoint(i)}
-                        >
-                          <span className="dot" aria-hidden="true" />
-                          <span className="wp-days">{days}</span>
-                          <span className="wp-title">{title}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-                <p className="route-detail">
-                  <span className="label">Hari {roadmap[selected][0]}</span>
-                  <span className={'state-chip ' + phaseStatus(selected)}>
-                    {trip.kind === 'unset' || trip.kind === 'before'
-                      ? state.road.includes(selected)
-                        ? 'Selesai'
-                        : 'Belum dimulai'
-                      : { done: 'Selesai', now: 'Sedang berjalan', next: 'Berikutnya' }[
-                          phaseStatus(selected)
-                        ]}
-                  </span>
-                  <span className="route-desc">
-                    <strong>{roadmap[selected][1]}.</strong> <span>{roadmap[selected][2]}</span>
-                  </span>
-                </p>
-              </section>
-              <div className="grid-split">
-                <section className="card target" aria-labelledby="target-heading">
-                  <div className="card-head baseline">
-                    <h2 id="target-heading" className="label">
-                      Pelabuhan tujuan · {monthName(month)}
-                    </h2>
-                    <span className="target-goal">
-                      Target <strong>Rp5.000.000</strong> / bulan
-                    </span>
-                  </div>
-                  <p className="target-value">{money(report.omzet)}</p>
-                  <p className="target-caption">
-                    <strong>{Math.round(report.percent)}%</strong> menuju pelabuhan ·{' '}
-                    {money(report.remaining)} lagi
-                  </p>
-                  <div
-                    className="horizon"
-                    role="img"
-                    aria-label={`Pencapaian target omzet ${Math.round(report.percent)}%`}
-                    style={{ '--pct': percent + '%' } as CSSProperties}
-                  >
-                    <div className="horizon-line" />
-                    <div className="horizon-fill" />
-                    <div
-                      className={
-                        'horizon-ship' + (percent < 4 ? ' start' : percent > 96 ? ' end' : '')
-                      }
-                    >
-                      <Icon.Ship />
-                    </div>
-                    <div className="horizon-port" />
-                  </div>
-                  <div className="horizon-scale" aria-hidden="true">
-                    {['0', '1 jt', '2 jt', '3 jt', '4 jt', '5 jt'].map((t) => (
-                      <span key={t}>{t}</span>
-                    ))}
-                  </div>
-                  <p className="target-foot">
-                    {report.omzet
-                      ? 'Dari nilai pekerjaan yang telah diterima bulan ini.'
-                      : 'Belum ada omzet yang dicatat bulan ini.'}
-                  </p>
-                  <div className="readings">
-                    <div>
-                      <p className="reading">{active.length}</p>
-                      <p>Prospek aktif</p>
-                    </div>
-                    <a href="#crm" onClick={() => setDueOnly(true)}>
-                      <p className={'reading' + (due.length ? ' alert' : '')}>{due.length}</p>
-                      <p>Follow-up jatuh tempo →</p>
-                    </a>
-                    <div>
-                      <p className="reading">{state.road.length}/8</p>
-                      <p>Fase selesai</p>
-                    </div>
-                  </div>
-                </section>
-                <section className="card focus" aria-labelledby="focus-heading">
-                  <div className="card-head baseline">
-                    <h2 id="focus-heading">Mulai dari yang penting</h2>
-                    <span className="count">{state.tasks.length}/3</span>
-                  </div>
-                  <p className="card-note">Tiga langkah kecil sebelum berlayar lebih jauh.</p>
-                  {focus.map((f, i) => (
-                    <label className="focus-row" key={f}>
-                      <input
-                        type="checkbox"
-                        disabled={busy}
-                        checked={state.tasks.includes(i)}
-                        onChange={(e) =>
-                          persist({
-                            kind: 'settings',
-                            start: state.start,
-                            road: state.road,
-                            tasks: e.target.checked
-                              ? [...state.tasks, i]
-                              : state.tasks.filter((t) => t !== i),
-                          })
-                        }
-                      />
-                      <span>{f}</span>
-                    </label>
-                  ))}
-                  <a className="text-link push" href="#road">
-                    Beri ruang untuk langkah kecil <Icon.ArrowRight />
-                  </a>
-                </section>
-              </div>
-              <div className="grid-split">
-                <section className="card" aria-labelledby="pipeline-heading">
-                  <div className="card-head">
-                    <h2 id="pipeline-heading">Pipeline penjualan</h2>
-                    <a className="text-link" href="#crm">
-                      Buka CRM <Icon.ArrowUpRight />
-                    </a>
-                  </div>
-                  {state.leads.length ? (
-                    <>
-                      <div className="table-wrap">
-                        <ol className="stage-track">
-                          {pipeline.map((s) => {
-                            const count = state.leads.filter((l) => l.stage === s).length;
-                            return (
-                              <li key={s} className={count ? 'filled' : ''}>
-                                <span className="dot" aria-hidden="true" />
-                                <strong>{count}</strong>
-                                <span>{s}</span>
-                              </li>
-                            );
-                          })}
-                        </ol>
-                      </div>
-                      {pipelineRows.length ? (
-                        <div className="table-wrap">
-                          <table className="compact">
-                            <thead>
-                              <tr>
-                                <th>Prospek</th>
-                                <th>Tahap</th>
-                                <th>Tindak lanjut</th>
-                                <th className="numeric">Nilai</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {pipelineRows.map((l) => {
-                                const next = followUp(l, now);
-                                return (
-                                  <tr key={l.id}>
-                                    <td>
-                                      <strong>{l.name}</strong>
-                                      <small>{l.problem}</small>
-                                    </td>
-                                    <td>{l.stage}</td>
-                                    <td className={next.due ? 'due nowrap' : 'muted nowrap'}>
-                                      {next.text}
-                                    </td>
-                                    <td className={'numeric' + (l.value ? '' : ' muted')}>
-                                      {l.value ? money(l.value) : 'belum ada'}
-                                    </td>
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
-                      ) : (
-                        <p className="card-note">
-                          Semua prospek sudah ditutup. Buka CRM untuk melihat riwayatnya.
-                        </p>
-                      )}
-                    </>
-                  ) : (
-                    <Empty title="Relasi pertama dimulai dari percakapan.">
-                      <p>
-                        Tambahkan calon klien, pahami masalahnya, lalu tentukan langkah berikutnya.
-                      </p>
-                      <button className="secondary" onClick={() => add('lead')}>
-                        <Icon.Plus /> Tambah prospek pertama
-                      </button>
-                    </Empty>
-                  )}
-                </section>
-                <section className="card logbook" aria-labelledby="log-heading">
-                  <div className="card-head">
-                    <h2 id="log-heading">Buku log</h2>
-                    <a className="text-link" href="#decisions">
-                      Decision log <Icon.ArrowUpRight />
-                    </a>
-                  </div>
-                  {!state.decisions.length && (
-                    <p className="card-note">
-                      Fondasi dari dokumen sumber. Keputusanmu sendiri akan tercatat di sini.
-                    </p>
-                  )}
-                  <div>
-                    {logRows.map((r) => (
-                      <LogEntry key={r.title} {...r} />
-                    ))}
-                  </div>
-                  <div className="legend" aria-hidden="true">
-                    {['FINAL', 'USULAN', 'EKSPERIMEN', 'BELUM TERVERIFIKASI'].map((s) => (
-                      <span key={s}>
-                        <span
-                          className={
-                            'flag small ' +
-                            ({ FINAL: 'final', USULAN: 'usulan', EKSPERIMEN: 'eksperimen' }[s] ??
-                              'unknown')
-                          }
-                        />
-                        {s}
-                      </span>
-                    ))}
-                  </div>
-                </section>
-              </div>
-            </>
-          )}
+          {page === 'home' && <Preparation state={state} busy={busy} persist={persist} />}
           {page === 'crm' && (
             <>
               <div className="toolbar">
@@ -938,6 +593,37 @@ export default function Workspace({ initial, documents, email, actions }: Props)
           )}
           {page === 'road' && (
             <>
+              <details className="card">
+                <summary>Checklist awal dari rencana sebelumnya</summary>
+                <p>
+                  Catatan lama tetap tersedia. Checklist ini terpisah dari empat langkah penyesuaian
+                  awal.
+                </p>
+                {[
+                  'Tetapkan kapasitas dan tanggal mulai',
+                  'Pilih satu penawaran untuk diuji',
+                  'Catat prospek pertama dan tindak lanjut',
+                ].map((label, i) => (
+                  <label className="check-label" key={label}>
+                    <input
+                      type="checkbox"
+                      disabled={busy}
+                      checked={state.tasks.includes(i)}
+                      onChange={(e) =>
+                        persist({
+                          kind: 'settings',
+                          start: state.start,
+                          road: state.road,
+                          tasks: e.target.checked
+                            ? [...state.tasks, i]
+                            : state.tasks.filter((t) => t !== i),
+                        })
+                      }
+                    />
+                    {label}
+                  </label>
+                ))}
+              </details>
               <div className="toolbar">
                 <label className="inline-label">
                   Tanggal mulai

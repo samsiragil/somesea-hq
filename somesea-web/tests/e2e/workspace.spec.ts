@@ -12,8 +12,10 @@ test.beforeEach(async ({ page }) => {
   await page.goto('/');
 });
 test('dashboard kosong, 7 navigasi, 18 dokumen, dan tanpa overflow', async ({ page }, info) => {
-  await expect(page.getByRole('heading', { name: 'Selamat berlayar, Sams.' })).toBeVisible();
-  await expect(page.getByText('Belum ada omzet yang dicatat bulan ini.')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Pelan dulu, rapikan pijakanmu.' })).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'Sekarang, cukup menyiapkan diri.' }),
+  ).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   expect(await page.evaluate(() => innerWidth)).toBe(page.viewportSize()!.width);
   await page.screenshot({
@@ -41,6 +43,7 @@ test('dashboard kosong, 7 navigasi, 18 dokumen, dan tanpa overflow', async ({ pa
   await page.screenshot({ path: `test-results/${info.project.name}-library.png`, fullPage: true });
 });
 test('CRM CRUD, pencarian, filter, dan tindak lanjut', async ({ page }) => {
+  await go(page, 'CRM & penjualan');
   await page.getByRole('button', { name: 'Tambah prospek', exact: true }).click();
   const dialog = page.getByRole('dialog');
   await dialog.getByLabel('Nama / usaha').fill('Hanya pengujian');
@@ -210,4 +213,57 @@ test('impor rusak ditolak dan ganti memerlukan konfirmasi cadangan', async ({ pa
   await expect(page.getByRole('button', { name: 'Konfirmasi impor' })).toBeDisabled();
   await page.getByLabel('Saya sudah menyimpan cadangan data saat ini.').check();
   await expect(page.getByRole('button', { name: 'Konfirmasi impor' })).toBeEnabled();
+});
+
+test('persiapan menyimpan catatan, selesai dan buka ulang tanpa mengubah roadmap', async ({
+  page,
+}) => {
+  await expect(page.getByRole('button', { name: 'Tambah prospek', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Simpan & tandai selesai' })).toBeDisabled();
+  await page.getByText('Lihat contoh hasil yang cukup').click();
+  await expect(page.getByText(/Selasa dan Kamis 30 menit/)).toBeVisible();
+  await page.getByLabel(/Catatanmu/).fill('Selasa 30 menit; Sabtu 60 menit; istirahat Minggu.');
+  await page.getByRole('button', { name: 'Simpan & tandai selesai' }).click();
+  await expect(page.getByRole('progressbar')).toHaveAttribute('value', '1');
+  await page.getByRole('button', { name: 'Muat ulang data' }).click();
+  await expect(page.getByLabel(/Catatanmu/)).toHaveValue(
+    'Selasa 30 menit; Sabtu 60 menit; istirahat Minggu.',
+  );
+  await page.getByRole('button', { name: 'Simpan sebagai proses' }).click();
+  await expect(page.getByRole('progressbar')).toHaveAttribute('value', '0');
+  await page
+    .getByRole('navigation', { name: 'Langkah persiapan' })
+    .getByRole('button', { name: /Pilih satu arah/ })
+    .click();
+  await expect(
+    page.getByRole('heading', { name: 'Pilih satu arah belajar', exact: true }).last(),
+  ).toBeVisible();
+  await expect(page.getByLabel(/Catatanmu/)).toHaveValue('');
+  await go(page, 'Roadmap 90 hari');
+  await expect(page.getByLabel('Tanggal mulai roadmap')).toHaveValue('');
+  await expect(page.getByRole('checkbox', { name: 'Fase selesai' }).first()).not.toBeChecked();
+});
+
+test('theme manual mengalahkan sistem dan bertahan setelah reload', async ({ page }, info) => {
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await page.reload();
+  const toggle = page.getByRole('switch', { name: 'Tema gelap' });
+  await expect(toggle).toHaveAttribute('aria-checked', 'true');
+  await toggle.click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  await page.reload();
+  await expect(toggle).toHaveAttribute('aria-checked', 'false');
+  await page.screenshot({
+    path: `test-results/${info.project.name}-preparation-light.png`,
+    fullPage: true,
+  });
+  await toggle.click();
+  await page.emulateMedia({ colorScheme: 'light' });
+  await page.reload();
+  await expect(toggle).toHaveAttribute('aria-checked', 'true');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({
+    path: `test-results/${info.project.name}-preparation-dark.png`,
+    fullPage: true,
+  });
 });
